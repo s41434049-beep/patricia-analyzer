@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анализатор Patricia 5.1</title>
+    <!-- Подключаем стили шахматной доски -->
+    <link rel="stylesheet" href="https://cloudflare.com">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        h1 { margin-bottom: 10px; color: #f0d9b5; font-size: 24px; text-align: center; }
+        #board { width: 100%; max-width: 400px; margin: 10px 0; border: 4px solid #333; border-radius: 4px; }
+        .controls { width: 100%; max-width: 400px; display: flex; gap: 10px; margin-bottom: 15px; }
+        button {
+            flex: 1; padding: 12px; font-size: 16px; font-weight: bold;
+            background-color: #b58863; color: white; border: none; border-radius: 4px; cursor: pointer;
+        }
+        button:active { background-color: #8a623e; }
+        #output {
+            width: 100%; max-width: 380px; background: #2a2a2a; padding: 10px;
+            border-radius: 4px; border-left: 5px solid #b58863; font-size: 15px; min-height: 80px;
+        }
+        .status-line { font-weight: bold; margin-bottom: 5px; }
+        .engine-move { color: #4caf50; font-size: 18px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>Анализатор Patricia 5.1</h1>
+    
+    <!-- Сама шахматная доска -->
+    <div id="board"></div>
+
+    <!-- Кнопки управления -->
+    <div class="controls">
+        <button id="clearBtn">Сброс</button>
+        <button id="analyzeBtn">Анализ Patricia</button>
+    </div>
+
+    <!-- Блок вывода результатов -->
+    <div id="output">
+        <div class="status-line" id="statusText">Передвиньте фигуры и нажмите «Анализ»</div>
+        <div id="resultText"></div>
+    </div>
+
+    <!-- Подключаем jQuery, chess.js и chessboard.js -->
+    <script src="https://jquery.com"></script>
+    <script src="https://cloudflare.com"></script>
+    <script src="https://cloudflare.com"></script>
+
+    <script>
+        // Укажите ссылку на ваш запущенный сервер Render (без слэша на конце)
+        const SERVER_URL = "https://onrender.com";
+
+        var board = null;
+        var game = new Chess();
+
+        // Настройка поведения доски
+        function onDragStart(source, piece, position, orientation) {
+            if (game.game_over()) return false;
+            if (piece.search(/^b/) !== -1) return false; // Игрок играет белыми
+        }
+
+        function onDrop(source, target) {
+            var move = game.move({ from: source, to: target, promotion: 'q' });
+            if (move === null) return 'snapback';
+            document.getElementById('statusText').innerText = "Позиция изменена. Нажмите «Анализ».";
+        }
+
+        function onSnapEnd() { board.position(game.fen()); }
+
+        var config = {
+            draggable: true,
+            position: 'start',
+            onDragStart: onDragStart,
+            onDrop: onDrop,
+            onSnapEnd: onSnapEnd,
+            pieceTheme: 'https://chessboardjs.com{piece}.png'
+        };
+        board = Chessboard('board', config);
+
+        // Кнопка Сброса позиции
+        document.getElementById('clearBtn').addEventListener('click', function() {
+            game.reset();
+            board.start();
+            document.getElementById('statusText').innerText = "Доска сброшена. Передвиньте фигуры.";
+            document.getElementById('resultText').innerHTML = "";
+        });
+
+        // Кнопка запуска Анализа движком
+        document.getElementById('analyzeBtn').addEventListener('click', async function() {
+            const currentFen = game.fen();
+            document.getElementById('statusText').innerText = "Patricia думает...";
+            document.getElementById('resultText').innerHTML = "Отправка запроса на сервер...";
+
+            try {
+                const response = await fetch(`${SERVER_URL}/analyze`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fen: currentFen, time_limit: 1.5 })
+                });
+
+                if (!response.ok) throw new Error("Ошибка сервера");
+
+                const data = await response.json();
+                
+                document.getElementById('statusText').innerText = "Анализ завершен:";
+                document.getElementById('resultText').innerHTML = `
+                    <div>Лучший ход: <span class="engine-move">${data.best_move}</span></div>
+                    <div>Оценка позиции: <b>${data.score > 0 ? '+' : ''}${data.score}</b></div>
+                    <div>Глубина расчета: ${data.depth} полуходов</div>
+                `;
+            } catch (error) {
+                document.getElementById('statusText').innerText = "Ошибка!";
+                document.getElementById('resultText').innerText = "Не удалось связаться с движком. Подождите, сервер Render может «просыпаться» до 50 секунд при первом запросе.";
+            }
+        });
+    </script>
+</body>
+</html>
